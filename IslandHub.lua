@@ -1,286 +1,145 @@
-if not game:IsLoaded() then
-	game.Loaded:Wait()
-end
-
+if not game:IsLoaded() then game.Loaded:Wait() end
 repeat task.wait() until game.Players.LocalPlayer
-
-if not loadstring then
-	return warn("Executor does not support loadstring")
-end
-
--- UI
 
 local success, Fluent = pcall(function()
 	return loadstring(game:HttpGet("https://github.com/dawid-scripts/Fluent/releases/latest/download/main.lua"))()
 end)
 
 if not success or not Fluent then
-	return warn("Failed to load Fluent UI")
+	return warn("Fluent failed to load - enable HttpGet in executor")
 end
 
--- SERVICES
-
 local Players = game:GetService("Players")
-local UIS = game:GetService("UserInputService")
+local Workspace = game:GetService("Workspace")
 local RunService = game:GetService("RunService")
-local TeleportService = game:GetService("TeleportService")
-local Debris = game:GetService("Debris")
+local UIS = game:GetService("UserInputService")
+local TS = game:GetService("TeleportService")
 
 local Player = Players.LocalPlayer
-
--- CHARACTER
+local Camera = Workspace.CurrentCamera
 
 local Character = Player.Character or Player.CharacterAdded:Wait()
 local Humanoid = Character:WaitForChild("Humanoid")
 local Root = Character:WaitForChild("HumanoidRootPart")
 
-Player.CharacterAdded:Connect(function(Char)
-	Character = Char
-	Humanoid = Char:WaitForChild("Humanoid")
-	Root = Char:WaitForChild("HumanoidRootPart")
+Player.CharacterAdded:Connect(function(c)
+	Character = c
+	Humanoid = c:WaitForChild("Humanoid")
+	Root = c:WaitForChild("HumanoidRootPart")
 end)
 
--- WINDOW
+-- Variables
+local WalkSpeed = 16
+local JumpPower = 50
+local InfiniteJump = false
+local Flying = false
+local FlySpeed = 80
+local Noclip = false
+local AutoCollect = false
+local AutoChop = false
+local FarmRange = 70
+local ChopDelay = 0.75
 
+-- UI
 local Window = Fluent:CreateWindow({
 	Title = "Island Hub",
-	SubTitle = "by rayon",
-	TabWidth = 160,
-	Size = UDim2.fromOffset(520, 420),
-	Acrylic = false,
+	SubTitle = "by rayon • Compact",
+	Size = UDim2.fromOffset(520, 480),
 	Theme = "Dark",
 	MinimizeKey = Enum.KeyCode.LeftControl
 })
 
-local Tabs = {
-	Main = Window:AddTab({
-		Title = "Main",
-		Icon = "home"
-	})
-}
+local Main = Window:AddTab({Title = "Main", Icon = "home"})
+local Auto = Window:AddTab({Title = "Autofarm", Icon = "leaf"})
 
-local MainTab = Tabs.Main
+Main:AddSlider("WalkSpeed", {Title = "WalkSpeed", Default = 16, Min = 16, Max = 250, Callback = function(v) WalkSpeed = v end})
+Main:AddSlider("JumpPower", {Title = "JumpPower", Default = 50, Min = 50, Max = 350, Callback = function(v) JumpPower = v end})
+Main:AddToggle("InfiniteJump", {Title = "Infinite Jump", Callback = function(v) InfiniteJump = v end})
+Main:AddToggle("Fly", {Title = "Fly", Callback = function(v) Flying = v end})
+Main:AddSlider("FlySpeed", {Title = "Fly Speed", Default = 80, Min = 30, Max = 300, Callback = function(v) FlySpeed = v end})
+Main:AddToggle("Noclip", {Title = "Noclip", Callback = function(v) Noclip = v end})
 
--- WALKSPEED
+Auto:AddToggle("AutoCollect", {Title = "Auto Collect", Callback = function(v) AutoCollect = v end})
+Auto:AddToggle("AutoChop", {Title = "Auto Chop Trees", Callback = function(v) AutoChop = v end})
+Auto:AddSlider("Range", {Title = "Farm Range", Default = 70, Min = 30, Max = 150, Callback = function(v) FarmRange = v end})
+Auto:AddSlider("ChopDelay", {Title = "Chop Delay", Default = 0.75, Min = 0.4, Max = 2, Callback = function(v) ChopDelay = v end})
 
-local WalkSpeed = 16
-
-MainTab:AddSlider("WalkSpeed", {
-	Title = "WalkSpeed",
-	Default = 16,
-	Min = 16,
-	Max = 150,
-	Rounding = 1,
-
-	Callback = function(Value)
-		WalkSpeed = Value
-	end
-})
-
--- JUMP POWER
-
-local JumpPower = 50
-
-MainTab:AddSlider("JumpPower", {
-	Title = "JumpPower",
-	Default = 50,
-	Min = 50,
-	Max = 250,
-	Rounding = 1,
-
-	Callback = function(Value)
-		JumpPower = Value
-	end
-})
-
--- INFINITE JUMP
-
-local InfiniteJump = false
-
-MainTab:AddToggle("InfiniteJump", {
-	Title = "Infinite Jump",
-	Default = false,
-
-	Callback = function(Value)
-		InfiniteJump = Value
-	end
-})
-
+-- Jump
 UIS.JumpRequest:Connect(function()
 	if InfiniteJump and Humanoid then
 		Humanoid:ChangeState(Enum.HumanoidStateType.Jumping)
 	end
 end)
 
--- FLY
+-- Autofarm
+local lastChop = 0
+RunService.Heartbeat:Connect(function()
+	if not Root then return end
 
-local Flying = false
-local FlySpeed = 70
-
-MainTab:AddSlider("FlySpeed", {
-	Title = "Fly Speed",
-	Default = 70,
-	Min = 20,
-	Max = 200,
-	Rounding = 1,
-
-	Callback = function(Value)
-		FlySpeed = Value
-	end
-})
-
-MainTab:AddToggle("Fly", {
-	Title = "Fly",
-	Default = false,
-
-	Callback = function(Value)
-		Flying = Value
-	end
-})
-
--- SAVE LAYOUT
-
-local SavedLayout = {}
-
-MainTab:AddButton({
-	Title = "Save Layout",
-
-	Callback = function()
-
-		table.clear(SavedLayout)
-
-		for _, v in pairs(workspace:GetDescendants()) do
-
-			if v:IsA("Part") and v.Anchored then
-
-				local distance = (v.Position - Root.Position).Magnitude
-
-				if distance <= 100 then
-
-					table.insert(SavedLayout, {
-						Size = v.Size,
-						CFrame = v.CFrame,
-						Color = v.Color,
-						Material = v.Material
-					})
+	if AutoCollect then
+		local drops = Workspace:FindFirstChild("Drops")
+		if drops then
+			for _, drop in ipairs(drops:GetChildren()) do
+				local p = drop:FindFirstChildWhichIsA("BasePart")
+				if p and (p.Position - Root.Position).Magnitude <= FarmRange then
+					Root.CFrame = CFrame.new(p.Position + Vector3.new(0,5,0))
+					task.wait(0.1)
 				end
 			end
 		end
-
-		Fluent:Notify({
-			Title = "Island Hub",
-			Content = "Saved "..#SavedLayout.." parts",
-			Duration = 5
-		})
-	end
-})
-
--- PREVIEW LAYOUT
-
-MainTab:AddButton({
-	Title = "Preview Layout",
-
-	Callback = function()
-
-		for _, data in pairs(SavedLayout) do
-
-			local p = Instance.new("Part")
-
-			p.Anchored = true
-			p.CanCollide = false
-			p.Transparency = 0.5
-
-			p.Size = data.Size
-			p.CFrame = data.CFrame
-			p.Color = data.Color
-			p.Material = data.Material
-
-			p.Parent = workspace
-
-			Debris:AddItem(p, 30)
-		end
-
-		Fluent:Notify({
-			Title = "Island Hub",
-			Content = "Preview Generated",
-			Duration = 5
-		})
-	end
-})
-
--- REJOIN
-
-MainTab:AddButton({
-	Title = "Rejoin",
-
-	Callback = function()
-		TeleportService:Teleport(game.PlaceId, Player)
-	end
-})
-
--- MAIN LOOP
-
-RunService.RenderStepped:Connect(function(delta)
-
-	if not Character or not Root or not Humanoid then
-		return
 	end
 
-	local Camera = workspace.CurrentCamera
-
-	-- WALKSPEED
-
-	Humanoid.WalkSpeed = WalkSpeed
-
-	-- JUMP POWER
-
-	Humanoid.JumpPower = JumpPower
-
-	-- FLY
-
-	if Flying then
-
-		Humanoid.PlatformStand = true
-
-		local MoveDirection = Vector3.zero
-
-		if UIS:IsKeyDown(Enum.KeyCode.W) then
-			MoveDirection += Camera.CFrame.LookVector
+	if AutoChop and tick() - lastChop >= ChopDelay then
+		-- Equip axe
+		local axe = nil
+		for _, t in ipairs(Player.Backpack:GetChildren()) do
+			if t:IsA("Tool") and t.Name:lower():find("axe") then axe = t break end
 		end
+		if axe then Humanoid:EquipTool(axe) end
 
-		if UIS:IsKeyDown(Enum.KeyCode.S) then
-			MoveDirection -= Camera.CFrame.LookVector
+		for _, obj in ipairs(Workspace:GetDescendants()) do
+			if obj:FindFirstChild("Trunk") or obj.Name:find("Tree") or obj.Name:find("Oak") or obj.Name:find("Pine") then
+				local trunk = obj:FindFirstChild("Trunk") or obj:FindFirstChildWhichIsA("BasePart")
+				if trunk and (trunk.Position - Root.Position).Magnitude <= FarmRange then
+					Root.CFrame = CFrame.new(trunk.Position + Vector3.new(0,6,0))
+					if axe and axe.Parent == Character then axe:Activate() end
+					lastChop = tick()
+					task.wait(ChopDelay)
+					break
+				end
+			end
 		end
-
-		if UIS:IsKeyDown(Enum.KeyCode.A) then
-			MoveDirection -= Camera.CFrame.RightVector
-		end
-
-		if UIS:IsKeyDown(Enum.KeyCode.D) then
-			MoveDirection += Camera.CFrame.RightVector
-		end
-
-		if UIS:IsKeyDown(Enum.KeyCode.Space) then
-			MoveDirection += Vector3.new(0,1,0)
-		end
-
-		if UIS:IsKeyDown(Enum.KeyCode.LeftControl) then
-			MoveDirection -= Vector3.new(0,1,0)
-		end
-
-		if MoveDirection.Magnitude > 0 then
-			Root.CFrame += MoveDirection.Unit * FlySpeed * delta
-		end
-
-	else
-		Humanoid.PlatformStand = false
 	end
 end)
 
--- NOTIFY
+-- Movement
+RunService.RenderStepped:Connect(function(dt)
+	if not Root or not Humanoid then return end
+	Humanoid.WalkSpeed = WalkSpeed
+	Humanoid.JumpPower = JumpPower
 
-Fluent:Notify({
-	Title = "Island Hub",
-	Content = "Loaded Successfully",
-	Duration = 5
-})
+	if Flying then
+		Humanoid.PlatformStand = true
+		local dir = Vector3.zero
+		if UIS:IsKeyDown(Enum.KeyCode.W) then dir += Camera.CFrame.LookVector end
+		if UIS:IsKeyDown(Enum.KeyCode.S) then dir -= Camera.CFrame.LookVector end
+		if UIS:IsKeyDown(Enum.KeyCode.A) then dir -= Camera.CFrame.RightVector end
+		if UIS:IsKeyDown(Enum.KeyCode.D) then dir += Camera.CFrame.RightVector end
+		if UIS:IsKeyDown(Enum.KeyCode.Space) then dir += Vector3.new(0,1,0) end
+		if UIS:IsKeyDown(Enum.KeyCode.LeftControl) then dir -= Vector3.new(0,1,0) end
+
+		if dir.Magnitude > 0 then
+			Root.CFrame += dir.Unit * FlySpeed * dt
+		end
+	else
+		Humanoid.PlatformStand = false
+	end
+
+	if Noclip and Character then
+		for _, part in ipairs(Character:GetDescendants()) do
+			if part:IsA("BasePart") then part.CanCollide = false end
+		end
+	end
+end)
+
+Fluent:Notify({Title = "Island Hub", Content = "Loaded Successfully!", Duration = 8})

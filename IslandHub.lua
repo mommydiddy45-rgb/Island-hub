@@ -4,7 +4,7 @@
 if not game:IsLoaded() then game.Loaded:Wait() end
 repeat task.wait() until game.Players.LocalPlayer and game.Players.LocalPlayer.Character
 
-print("🌟 Pooke's IVM Loading...")
+print("ðŸŒŸ Pooke's IVM Loading...")
 
 local plr = game.Players.LocalPlayer
 local ws = game:GetService("Workspace")
@@ -32,12 +32,57 @@ local autoATM = false
 local killAuraConnection = nil
 local farmConnection = nil
 
--- [functions omitted for brevity: notify, teleportTo, saveIsland, buildHere,
--- toggleAutoFarm, toggleKillAura, toggleAutoChests, toggleAutoVending, toggleATM,
--- toggleAutoOpen, GUI setup, tab builders, etc; use your full provided source above]
+local function notify(msg)
+	print("[IVM] " .. msg)
+end
 
--- For space, paste the full source here or keep this short version as a placeholder.
--- In actual upload, your provided (decoded) script will be pasted in full.
+local function teleportTo(pos)
+	if root then
+		root.CFrame = CFrame.new(pos)
+	end
+end
 
+-- SAVE ISLAND
+local function saveIsland()
+	table.clear(saved)
+	local count = 0
+	for _, v in ipairs(ws:GetDescendants()) do
+		if v:IsA("BasePart") and v.Anchored and (v.Position - root.Position).Magnitude <= 500 then
+			table.insert(saved, {
+				cf = v.CFrame,
+				sz = v.Size,
+				col = v.Color,
+				mat = v.Material,
+				sh = v.Shape,
+				tr = v.Transparency
+			})
+			count += 1
+		end
+	end
+	notify("ðŸ’¾ Saved " .. count .. " parts")
+end
 
-print("🌟 Pooke's IVM Fixed Version Loaded Successfully!")
+-- BUILD HERE
+local previewOffset = Vector3.new(0, 0, 0)
+local function buildHere()
+	if #saved == 0 then
+		notify("âš ï¸ No island saved! Press Save Island first.")
+		return
+	end
+	notify("ðŸš€ Building " .. #saved .. " parts...")
+	for _, d in ipairs(saved) do
+		local p = Instance.new("Part")
+		p.Anchored = true
+		p.Size = d.sz
+		p.CFrame = d.cf + previewOffset
+		p.Color = d.col
+		p.Material = d.mat
+		p.Shape = d.sh
+		p.Transparency = d.tr
+		p.Parent = ws
+		task.wait()
+	end
+	notify("ðŸŒŸ Build Complete!")
+end
+
+-- [REMAINING FUNCTIONS, GUI, TABS, AND EVENT LOOPS OMITTED FOR SPACE. WILL CONTINUE IN NEXT PART.]
